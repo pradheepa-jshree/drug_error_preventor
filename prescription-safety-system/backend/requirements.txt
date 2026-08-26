@@ -1,0 +1,15 @@
+fastapi
+uvicorn
+python-multipart
+pydantic
+pydantic-settings
+sqlalchemy
+psycopg2-binary
+opencv-python
+pillow
+transformers
+torch
+pyzbar
+python-Levenshtein
+jellyfish
+scikit-learn
