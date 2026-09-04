@@ -1,4 +1,13 @@
-from sqlalchemy import Column, Integer, String, Float, Text, Date, TIMESTAMP
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Float,
+    Text,
+    Date,
+    TIMESTAMP,
+    ForeignKey,
+)
 from sqlalchemy.sql import func
 from .database import Base
 
@@ -19,8 +28,8 @@ class LASAPair(Base):
     __tablename__ = "lasa_pairs"
 
     id = Column(Integer, primary_key=True, index=True)
-    drug_a_id = Column(Integer)
-    drug_b_id = Column(Integer)
+    drug_a_id = Column(Integer, ForeignKey("drugs.drug_id"))
+    drug_b_id = Column(Integer, ForeignKey("drugs.drug_id"))
     spelling_score = Column(Float)
     phonetic_score = Column(Float)
     reason = Column(String(20))
@@ -30,8 +39,8 @@ class DrugInteraction(Base):
     __tablename__ = "drug_interactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    drug_a_id = Column(Integer)
-    drug_b_id = Column(Integer)
+    drug_a_id = Column(Integer, ForeignKey("drugs.drug_id"))
+    drug_b_id = Column(Integer, ForeignKey("drugs.drug_id"))
     severity = Column(String(20))
     reason = Column(Text)
 
@@ -48,8 +57,8 @@ class PurchaseHistory(Base):
     __tablename__ = "purchase_history"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer)
-    drug_id = Column(Integer)
+    patient_id = Column(Integer, ForeignKey("patients.patient_id"))
+    drug_id = Column(Integer, ForeignKey("drugs.drug_id"))
     date_dispensed = Column(Date, nullable=False)
 
 
@@ -65,7 +74,7 @@ class OCRCorrection(Base):
     __tablename__ = "ocr_corrections"
 
     id = Column(Integer, primary_key=True, index=True)
-    doctor_id = Column(Integer)
+    doctor_id = Column(Integer, ForeignKey("doctors.doctor_id"))
     original_ocr_text = Column(Text)
     corrected_text = Column(Text)
     prescription_ref = Column(String(120))

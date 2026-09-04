@@ -1,7 +1,8 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
-DATABASE_URL = "postgresql+psycopg://admin:demo@localhost:5432/lasa_guardian"
+from .config import DATABASE_URL
+
 
 engine = create_engine(
     DATABASE_URL,
@@ -19,6 +20,7 @@ Base = declarative_base()
 
 def get_db():
     db = SessionLocal()
+
     try:
         yield db
     finally:
