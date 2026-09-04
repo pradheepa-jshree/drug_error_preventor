@@ -1,6 +1,14 @@
 "use client";
 
+
 import { useState } from "react";
+
+type OCRResult = {
+  text: string;
+  dosage: string;
+  frequency: string;
+  ocr_confidence: number;
+};
 
 export default function Home() {
   const [patientPhone, setPatientPhone] = useState("");
@@ -10,6 +18,68 @@ export default function Home() {
   const [prescriptionPreview, setPrescriptionPreview] = useState("");
   const [barcodePreview, setBarcodePreview] = useState("");
 
+  const [ocrResult, setOcrResult] = useState<OCRResult | null>(null);
+  type BarcodeResult = {
+    gtin: string | null;
+    drug_id: number | null;
+    generic_name: string | null;
+    brand_name: string | null;
+    found: boolean;
+  };
+
+const [barcodeResult, setBarcodeResult] = useState<BarcodeResult | null>(null);
+const handleBarcode = async () => {
+  if (!barcodeFile) {
+    alert("Please upload a barcode image first.");
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append("file", barcodeFile);
+
+  try {
+    const response = await fetch("http://localhost:8000/barcode", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error("Barcode request failed");
+    }
+
+    const data = await response.json();
+    setBarcodeResult(data);
+  } catch (error) {
+    console.error(error);
+    alert("Unable to connect to the barcode server.");
+  }
+};
+  const handleOCR = async () => {
+    if (!prescriptionFile) {
+      alert("Please upload a prescription image first.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", prescriptionFile);
+
+    try {
+      const response = await fetch("http://localhost:8000/ocr", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error("OCR request failed");
+      }
+
+      const data = await response.json();
+      setOcrResult(data[0]);
+    } catch (error) {
+      console.error(error);
+      alert("Unable to connect to the OCR server.");
+    }
+  };
   const handleConfirm = () => {
     alert("Prescription confirmed successfully!");
   };
@@ -82,6 +152,13 @@ export default function Home() {
               ✓ {prescriptionFile.name} selected
             </p>
           )}
+
+          <button
+            onClick={handleOCR}
+            className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700"
+          >
+            Analyze Prescription
+          </button>
           {prescriptionPreview && (
             <img
               src={prescriptionPreview}
@@ -116,6 +193,12 @@ export default function Home() {
               ✓ {barcodeFile.name} selected
             </p>
           )}
+          <button
+            onClick={handleBarcode}
+            className="mt-4 w-full rounded-lg bg-blue-600 px-4 py-3 font-semibold text-white hover:bg-blue-700"
+          >
+            Analyze Barcode
+          </button>
           {barcodePreview && (
             <img
               src={barcodePreview}
@@ -139,7 +222,7 @@ export default function Home() {
               Medicine
             </p>
             <p className="mt-1 text-lg font-bold text-slate-800">
-              Aml0dipine
+              {ocrResult?.text || "Waiting for OCR..."}
             </p>
           </div>
 
@@ -148,7 +231,7 @@ export default function Home() {
               Dosage
             </p>
             <p className="mt-1 text-lg font-bold text-slate-800">
-              5 mg
+              {ocrResult?.dosage || "Waiting for OCR..."}
             </p>
           </div>
 
@@ -157,7 +240,7 @@ export default function Home() {
               Frequency
             </p>
             <p className="mt-1 text-lg font-bold text-slate-800">
-              1-0-1
+              {ocrResult?.frequency || "Waiting for OCR..."}
             </p>
           </div>
 
@@ -166,7 +249,9 @@ export default function Home() {
               Confidence
             </p>
             <p className="mt-1 text-lg font-bold text-orange-600">
-              71%
+              {ocrResult
+                ? `${(ocrResult.ocr_confidence * 100).toFixed(0)}%`
+                : "Waiting for OCR..."}
             </p>
           </div>
 
