@@ -13,7 +13,7 @@ import cv2
 import torch
 
 
-BASE_MODEL_NAME = "microsoft/trocr-base-handwritten"
+BASE_MODEL_NAME = "microsoft/trocr-small-handwritten"
 
 ADAPTER_DIR = os.path.join(
     os.path.dirname(__file__),
