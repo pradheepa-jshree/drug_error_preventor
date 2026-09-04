@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Depends, Form
 from sqlalchemy.orm import Session
 
 from .database import get_db
+from .safety.engine import SafetyEngine
 from .models import (
     Drug,
     LASAPair,
@@ -158,6 +159,9 @@ def disambiguate_endpoint(
     request: DisambiguateRequest,
     db: Session = Depends(get_db)
 ):
+    engine = SafetyEngine(db)
+
+    # No candidates
     if not request.candidates:
         return {
             "resolved": False,
@@ -165,6 +169,7 @@ def disambiguate_endpoint(
             "candidates": []
         }
 
+    # Only one candidate
     if len(request.candidates) == 1:
         return {
             "resolved": True,
@@ -172,31 +177,47 @@ def disambiguate_endpoint(
             "candidates": request.candidates
         }
 
-    # Check whether candidate pairs exist in LASA table.
-    lasa_pairs = []
+    # -----------------------------------------------------
+    # CONTEXT SCORE
+    # -----------------------------------------------------
+    # For now, give a basic context score when context
+    # information is provided.
+    context_score = 50 if request.context else 0
 
-    for i in range(len(request.candidates)):
-        for j in range(i + 1, len(request.candidates)):
-            pair = (
-                db.query(LASAPair)
-                .filter(
-                    (
-                        (LASAPair.drug_a_id == request.candidates[i])
-                        & (LASAPair.drug_b_id == request.candidates[j])
-                    )
-                    |
-                    (
-                        (LASAPair.drug_a_id == request.candidates[j])
-                        & (LASAPair.drug_b_id == request.candidates[i])
-                    )
-                )
-                .first()
-            )
+    # -----------------------------------------------------
+    # LASA SCORING
+    # -----------------------------------------------------
 
-            if pair:
-                lasa_pairs.append(pair)
+    lasa_results = engine.check_lasa_candidates(
+        request.candidates,
+        context_score
+    )
 
-    # If multiple candidates remain, don't guess.
+    # No LASA pairs found
+    if not lasa_results:
+        return {
+            "resolved": False,
+            "drug": None,
+            "candidates": request.candidates
+        }
+
+    # -----------------------------------------------------
+    # FIND THE STRONGEST LASA RELATIONSHIP
+    # -----------------------------------------------------
+
+    best_result = max(
+        lasa_results,
+        key=lambda x: x["final_score"]
+    )
+
+    # -----------------------------------------------------
+    # DON'T GUESS A DRUG
+    # -----------------------------------------------------
+
+    # A high score means the candidates are very similar.
+    # We should flag the ambiguity instead of randomly
+    # selecting one of them.
+
     return {
         "resolved": False,
         "drug": None,
@@ -261,37 +282,29 @@ def safety_check(
     request: SafetyCheckRequest,
     db: Session = Depends(get_db)
 ):
+    engine = SafetyEngine(db)
+
     alerts = []
 
-    # Check today's drugs against each other.
+    # Remove duplicate drug IDs
     drug_ids = list(set(request.today_drug_ids))
 
-    for i in range(len(drug_ids)):
-        for j in range(i + 1, len(drug_ids)):
+    # -----------------------------------------------------
+    # 1. DRUG-DRUG INTERACTION CHECK
+    # -----------------------------------------------------
 
-            interaction = (
-                db.query(DrugInteraction)
-                .filter(
-                    (
-                        (DrugInteraction.drug_a_id == drug_ids[i])
-                        & (DrugInteraction.drug_b_id == drug_ids[j])
-                    )
-                    |
-                    (
-                        (DrugInteraction.drug_a_id == drug_ids[j])
-                        & (DrugInteraction.drug_b_id == drug_ids[i])
-                    )
-                )
-                .first()
-            )
+    interactions = engine.check_interactions(drug_ids)
 
-            if interaction:
-                alerts.append(
-                    f"{interaction.severity.upper()}: "
-                    f"{interaction.reason}"
-                )
+    for interaction in interactions:
+        alerts.append(
+            f"{interaction['severity'].upper()}: "
+            f"{interaction['reason']}"
+        )
 
-    # Check patient's previous medications.
+    # -----------------------------------------------------
+    # 2. PATIENT HISTORY CHECK
+    # -----------------------------------------------------
+
     patient = (
         db.query(Patient)
         .filter(Patient.phone == request.patient_phone)
@@ -299,61 +312,61 @@ def safety_check(
     )
 
     if patient:
-        previous_records = (
-            db.query(PurchaseHistory)
-            .filter(
-                PurchaseHistory.patient_id == patient.patient_id
-            )
-            .all()
+        history_alerts = engine.check_patient_history(
+            patient.patient_id,
+            drug_ids
         )
 
-        previous_drug_ids = {
-            record.drug_id
-            for record in previous_records
-        }
+        for history in history_alerts:
+            alerts.append(
+                f"PATIENT HISTORY: "
+                f"{history['message']} "
+                f"(Drug ID: {history['drug_id']})"
+            )
 
-        for today_drug_id in drug_ids:
-            for previous_drug_id in previous_drug_ids:
+    else:
+        alerts.append(
+            "Patient not found. Patient history could not be checked."
+        )
 
-                if today_drug_id == previous_drug_id:
-                    continue
+    # -----------------------------------------------------
+    # 3. DOSAGE SANITY CHECK
+    # -----------------------------------------------------
 
-                interaction = (
-                    db.query(DrugInteraction)
-                    .filter(
-                        (
-                            (
-                                DrugInteraction.drug_a_id
-                                == today_drug_id
-                            )
-                            &
-                            (
-                                DrugInteraction.drug_b_id
-                                == previous_drug_id
-                            )
-                        )
-                        |
-                        (
-                            (
-                                DrugInteraction.drug_a_id
-                                == previous_drug_id
-                            )
-                            &
-                            (
-                                DrugInteraction.drug_b_id
-                                == today_drug_id
-                            )
-                        )
-                    )
-                    .first()
+    if request.dosages:
+
+        for drug_id, prescribed_dose in request.dosages.items():
+
+            drug = (
+                db.query(Drug)
+                .filter(Drug.drug_id == drug_id)
+                .first()
+            )
+
+            if not drug:
+                alerts.append(
+                    f"Drug ID {drug_id} was not found."
+                )
+                continue
+
+            dosage_result = engine.check_dosage(
+                drug.generic_name,
+                prescribed_dose
+            )
+
+            if dosage_result["status"] == "WARNING":
+                alerts.append(
+                    f"DOSAGE WARNING - "
+                    f"{drug.generic_name}: "
+                    f"{dosage_result['message']}"
                 )
 
-                if interaction:
-                    alerts.append(
-                        f"PATIENT HISTORY - "
-                        f"{interaction.severity.upper()}: "
-                        f"{interaction.reason}"
-                    )
+            elif dosage_result["status"] == "UNKNOWN":
+                alerts.append(
+                    f"DOSAGE CHECK - "
+                    f"{drug.generic_name}: "
+                    f"{dosage_result['message']}"
+                )
 
     return {
         "alerts": alerts

@@ -51,6 +51,7 @@ class HistoryResponse(BaseModel):
 class SafetyCheckRequest(BaseModel):
     today_drug_ids: List[int]
     patient_phone: str
+    dosages: Optional[dict[int, str]] = None
 
 
 class SafetyCheckResponse(BaseModel):
