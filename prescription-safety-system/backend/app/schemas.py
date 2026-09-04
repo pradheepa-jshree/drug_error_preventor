@@ -32,10 +32,21 @@ class DisambiguateRequest(BaseModel):
     context: Optional[str] = None
 
 
+class DisambiguationScore(BaseModel):
+    drug_a_id: int
+    drug_b_id: int
+    spelling_score: float
+    phonetic_score: float
+    context_score: float
+    final_score: float
+    reason: Optional[str] = None
+
+
 class DisambiguateResponse(BaseModel):
     resolved: bool
     drug: Optional[int] = None
     candidates: Optional[List[int]] = None
+    scores: Optional[List[DisambiguationScore]] = None
 
 
 class HistoryItem(BaseModel):
