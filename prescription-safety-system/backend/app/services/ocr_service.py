@@ -13,7 +13,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), "..", "..", "..", "ml", "ocr"))
 
 from trocr_inference import run_ocr
-from text_parser import parse_line
+from app.services.text_parser import parse_line
 
 
 def process_prescription_image(image_path: str) -> dict:
