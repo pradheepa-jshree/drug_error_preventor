@@ -1,0 +1,11 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: lasa_guardian
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: demo
+    ports:
+      - "5432:5432"
+
+      
